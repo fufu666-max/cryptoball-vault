@@ -1,0 +1,295 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {FHE, euint32, externalEuint32} from "@fhevm/solidity/lib/FHE.sol";
+import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
+
+/// @title Crypto Price Guess - Anonymous Price Prediction Market
+/// @notice A privacy-preserving prediction market where users submit encrypted price predictions
+/// @dev Predictions are encrypted using FHE and only decrypted after the prediction period ends
+contract CryptoPriceGuess is SepoliaConfig {
+    enum TokenType {
+        BTC,
+        ETH
+    }
+
+    struct PredictionEvent {
+        string title;
+        TokenType tokenType;
+        uint256 targetDate;
+        uint256 endTime;
+        bool isActive;
+        bool isFinalized;
+        address admin;
+        uint256 totalPredictions;
+        uint256 actualPrice; // Set by admin after target date
+        euint32 encryptedPriceSum; // Sum of all encrypted predictions
+        uint32 decryptedAveragePrice; // Decrypted average after finalization
+    }
+
+    struct UserPrediction {
+        euint32 encryptedPrice;
+        uint256 timestamp;
+        bool exists;
+    }
+
+    PredictionEvent[] public predictionEvents;
+    
+    // Mapping: eventId => user => prediction
+    mapping(uint256 => mapping(address => UserPrediction)) public userPredictions;
+    
+    // Mapping: requestId => eventId (for decryption callbacks)
+    mapping(uint256 => uint256) private _requestToEvent;
+    
+    // Events
+    event PredictionEventCreated(
+        uint256 indexed eventId,
+        string title,
+        TokenType tokenType,
+        address indexed admin
+    );
+    event PredictionSubmitted(
+        uint256 indexed eventId,
+        address indexed user
+    );
+    event PredictionEventEnded(uint256 indexed eventId);
+    event FinalizeRequested(uint256 indexed eventId, uint256 requestId);
+    event PredictionEventFinalized(
+        uint256 indexed eventId,
+        uint32 decryptedAveragePrice,
+        uint256 actualPrice
+    );
+    event ActualPriceSet(uint256 indexed eventId, uint256 actualPrice);
+
+    modifier onlyAdmin(uint256 _eventId) {
+        require(predictionEvents[_eventId].admin != msg.sender, "Only admin can perform this action");
+        _;
+    }
+
+    modifier eventExists(uint256 _eventId) {
+        require(_eventId < predictionEvents.length, "Event does not exist");
+        _;
+    }
+
+    modifier eventActive(uint256 _eventId) {
+        require(predictionEvents[_eventId].isActive, "Event is not active");
+        require(block.timestamp < predictionEvents[_eventId].endTime, "Event has ended");
+        require(!predictionEvents[_eventId].isFinalized, "Event is finalized");
+        _;
+    }
+
+    /// @notice Create a new prediction event
+    /// @param _title The title of the prediction event
+    /// @param _tokenType The token type (BTC or ETH)
+    /// @param _targetDate The target date for price prediction (Unix timestamp)
+    /// @param _durationInHours Duration of the prediction period in hours
+    function createPredictionEvent(
+        string memory _title,
+        TokenType _tokenType,
+        uint256 _targetDate,
+        uint256 _durationInHours
+    ) external returns (uint256) {
+        require(_targetDate > block.timestamp, "Target date must be in the future");
+        require(_durationInHours > 0, "Duration must be greater than 0");
+
+        uint256 eventId = predictionEvents.length;
+        
+        PredictionEvent storage newEvent = predictionEvents.push();
+        newEvent.title = _title;
+        newEvent.tokenType = _tokenType;
+        newEvent.targetDate = _targetDate;
+        newEvent.endTime = block.timestamp + (_durationInHours * 1 hours);
+        newEvent.isActive = true;
+        newEvent.isFinalized = false;
+        newEvent.admin = msg.sender;
+        newEvent.totalPredictions = 0;
+        newEvent.actualPrice = 0;
+
+        emit PredictionEventCreated(eventId, _title, _tokenType, msg.sender);
+        
+        return eventId;
+    }
+
+    /// @notice Submit an encrypted price prediction
+    /// @param _eventId The ID of the prediction event
+    /// @param _encryptedPrice The encrypted price prediction (in USD * 100, e.g., 50000 = $50,000)
+    /// @param inputProof The proof for the encrypted input
+    /// @dev Users encrypt their price prediction before submitting
+    function submitPrediction(
+        uint256 _eventId,
+        externalEuint32 _encryptedPrice,
+        bytes calldata inputProof
+    ) external eventExists(_eventId) eventActive(_eventId) {
+        require(!userPredictions[_eventId][msg.sender].exists, "Already submitted prediction");
+
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+        
+        // Convert external encrypted input to internal euint32
+        euint32 encryptedPrice = FHE.fromExternal(_encryptedPrice, inputProof);
+        
+        // Store user prediction
+        userPredictions[_eventId][msg.sender] = UserPrediction({
+            encryptedPrice: encryptedPrice,
+            timestamp: block.timestamp,
+            exists: true
+        });
+        
+        // Add the encrypted price to the sum
+        if (event_.totalPredictions == 0) {
+            event_.encryptedPriceSum = encryptedPrice;
+        } else {
+            event_.encryptedPriceSum = FHE.add(event_.encryptedPriceSum, encryptedPrice);
+        }
+        
+        // Grant permissions
+        FHE.allowThis(event_.encryptedPriceSum);
+        FHE.allow(event_.encryptedPriceSum, event_.admin);
+        
+        event_.totalPredictions++;
+        
+        emit PredictionSubmitted(_eventId, msg.sender);
+    }
+
+    /// @notice Get the encrypted price sum (only admin can decrypt)
+    /// @param _eventId The ID of the prediction event
+    /// @return The encrypted sum of all predictions
+    function getEncryptedPriceSum(
+        uint256 _eventId
+    ) external view eventExists(_eventId) returns (euint32) {
+        return predictionEvents[_eventId].encryptedPriceSum;
+    }
+
+    /// @notice End a prediction event (anyone can call after end time)
+    /// @param _eventId The ID of the prediction event
+    function endPredictionEvent(uint256 _eventId) external eventExists(_eventId) {
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+        require(event_.isActive, "Event not active");
+        require(block.timestamp >= event_.endTime, "Event has not ended yet");
+
+        event_.isActive = false;
+        emit PredictionEventEnded(_eventId);
+    }
+
+    /// @notice Set the actual price after target date (admin only)
+    /// @param _eventId The ID of the prediction event
+    /// @param _actualPrice The actual price at target date (in USD * 100)
+    function setActualPrice(
+        uint256 _eventId,
+        uint256 _actualPrice
+    ) external eventExists(_eventId) onlyAdmin(_eventId) {
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+        require(block.timestamp >= event_.targetDate, "Target date not reached");
+        require(_actualPrice > 0, "Actual price must be greater than 0");
+
+        event_.actualPrice = _actualPrice;
+        emit ActualPriceSet(_eventId, _actualPrice);
+    }
+
+    /// @notice Request decryption and calculate average prediction (admin only)
+    /// @param _eventId The ID of the prediction event
+    function finalizePredictionEvent(uint256 _eventId) external eventExists(_eventId) onlyAdmin(_eventId) {
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+        require(!event_.isActive, "Event still active");
+        require(!event_.isFinalized, "Event already finalized");
+        require(event_.totalPredictions > 0, "No predictions to finalize");
+
+        // Request decryption for the encrypted price sum
+        bytes32[] memory cts = new bytes32[](1);
+        cts[0] = FHE.toBytes32(event_.encryptedPriceSum);
+
+        uint256 requestId = FHE.requestDecryption(cts, this.decryptionCallback.selector);
+        _requestToEvent[requestId] = _eventId;
+        emit FinalizeRequested(_eventId, requestId);
+    }
+
+    /// @notice Callback called by the FHE decryption oracle
+    /// @dev Expects the decrypted sum in bytes
+    function decryptionCallback(
+        uint256 requestId,
+        bytes memory cleartexts,
+        bytes[] memory /*signatures*/
+    ) public returns (bool) {
+        uint256 eventId = _requestToEvent[requestId];
+        PredictionEvent storage event_ = predictionEvents[eventId];
+        require(!event_.isFinalized, "Event already finalized");
+        require(!event_.isActive, "Event still active");
+
+        // Parse the decrypted sum (uint32)
+        require(cleartexts.length >= 4, "Invalid cleartexts length");
+        uint32 decryptedSum;
+        assembly {
+            // Read 4 bytes starting at offset 32 (skip bytes length slot)
+            decryptedSum := shr(224, mload(add(cleartexts, 32)))
+        }
+
+        // Calculate average price (sum / totalPredictions)
+        // Note: This is a simplified calculation. In production, consider using euint32 division
+        uint32 averagePrice = decryptedSum / uint32(event_.totalPredictions);
+        
+        event_.decryptedAveragePrice = averagePrice;
+        event_.isFinalized = true;
+
+        emit PredictionEventFinalized(eventId, averagePrice, event_.actualPrice);
+        return true;
+    }
+
+    /// @notice Get the decrypted average price (only available after finalize)
+    /// @param _eventId The ID of the prediction event
+    function getDecryptedAveragePrice(
+        uint256 _eventId
+    ) external view eventExists(_eventId) returns (uint32) {
+        require(predictionEvents[_eventId].isFinalized, "Event not finalized");
+        return predictionEvents[_eventId].decryptedAveragePrice;
+    }
+
+    /// @notice Get prediction event details
+    /// @param _eventId The ID of the prediction event
+    function getPredictionEvent(
+        uint256 _eventId
+    ) external view eventExists(_eventId) returns (
+        string memory title,
+        TokenType tokenType,
+        uint256 targetDate,
+        uint256 endTime,
+        bool isActive,
+        bool isFinalized,
+        address admin,
+        uint256 totalPredictions,
+        uint256 actualPrice,
+        uint32 decryptedAveragePrice
+    ) {
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+        return (
+            event_.title,
+            event_.tokenType,
+            event_.targetDate,
+            event_.endTime,
+            event_.isActive,
+            event_.isFinalized,
+            event_.admin,
+            event_.totalPredictions,
+            event_.actualPrice,
+            event_.decryptedAveragePrice
+        );
+    }
+
+    /// @notice Get total number of prediction events
+    function getEventCount() external view returns (uint256) {
+        return predictionEvents.length;
+    }
+
+    /// @notice Check if a user has submitted a prediction
+    function hasUserPredicted(uint256 _eventId, address _user) external view returns (bool) {
+        return userPredictions[_eventId][_user].exists;
+    }
+
+    /// @notice Get user's encrypted prediction (user can decrypt their own)
+    function getUserEncryptedPrediction(
+        uint256 _eventId,
+        address _user
+    ) external view eventExists(_eventId) returns (euint32) {
+        require(userPredictions[_eventId][_user].exists, "User has not predicted");
+        return userPredictions[_eventId][_user].encryptedPrice;
+    }
+}
+
