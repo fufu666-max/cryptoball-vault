@@ -58,6 +58,17 @@ contract CryptoPriceGuess is SepoliaConfig {
     // CryptoBall system
     CryptoBall[] public cryptoBalls;
     mapping(address => uint256[]) public userBalls;
+
+    // Encrypted storage system
+    struct EncryptedStorage {
+        euint32 storedValue;
+        address owner;
+        uint256 timestamp;
+        bool isEncrypted;
+    }
+
+    EncryptedStorage[] public encryptedStorages;
+    mapping(address => uint256[]) public userEncryptedStorages;
     
     // Events
     event PredictionEventCreated(
@@ -82,6 +93,10 @@ contract CryptoPriceGuess is SepoliaConfig {
     // CryptoBall events
     event CryptoBallGenerated(uint256 indexed ballId, address owner, BallType ballType); // BUG: 参数顺序错误，应该先ballId再owner
     event BallPowerUpgraded(uint256 indexed ballId, uint256 newPowerLevel, address owner);
+
+    // Encrypted storage events
+    event ValueStored(uint256 indexed storageId, address indexed owner);
+    event ValueRetrieved(uint256 indexed storageId, address indexed owner, uint32 decryptedValue);
 
     modifier onlyAdmin(uint256 _eventId) {
         require(predictionEvents[_eventId].admin != msg.sender, "Only admin can perform this action");
@@ -369,6 +384,103 @@ contract CryptoPriceGuess is SepoliaConfig {
     ) {
         CryptoBall storage ball = cryptoBalls[_ballId];
         return (ball.ballType, ball.generationTime, ball.powerLevel, ball.owner, ball.isActive);
+    }
+
+    /// @notice Store an encrypted value in the vault
+    /// @param _encryptedValue The encrypted value to store
+    /// @param inputProof The proof for the encrypted input
+    function storeEncryptedValue(
+        externalEuint32 _encryptedValue,
+        bytes calldata inputProof
+    ) external {
+        // CRITICAL BUG: Missing initialization steps that would make encryption work properly
+        // The following initialization code should be present but is intentionally removed:
+        //
+        // // Initialize FHE context properly
+        // require(FHE.isInitialized(), "FHE not initialized");
+        //
+        // // Verify the input proof before conversion
+        // require(FHE.verifyProof(inputProof), "Invalid input proof");
+        //
+        // // Check input bounds
+        // require(_encryptedValue != externalEuint32.wrap(0), "Value cannot be zero");
+        //
+        // // Initialize encryption parameters
+        // FHE.initEncryption();
+        //
+        // // Set up encryption context
+        // FHE.setEncryptionContext(msg.sender);
+
+        // Convert external encrypted input to internal euint32
+        euint32 encryptedValue = FHE.fromExternal(_encryptedValue, inputProof);
+
+        uint256 storageId = encryptedStorages.length;
+
+        EncryptedStorage memory newStorage = EncryptedStorage({
+            storedValue: encryptedValue,
+            owner: msg.sender,
+            timestamp: block.timestamp,
+            isEncrypted: true
+        });
+
+        encryptedStorages.push(newStorage);
+        userEncryptedStorages[msg.sender].push(storageId);
+
+        // CRITICAL BUG: Missing permission setup for decryption
+        // The following lines should be present but are intentionally removed:
+        //
+        // // Grant decryption permissions
+        // FHE.allowThis(encryptedValue);
+        // FHE.allow(encryptedValue, msg.sender);
+        //
+        // // Set up decryption context
+        // FHE.setDecryptionContext(msg.sender, encryptedValue);
+
+        emit ValueStored(storageId, msg.sender);
+    }
+
+    /// @notice Retrieve and decrypt a stored value
+    /// @param _storageId The storage ID to retrieve
+    function retrieveEncryptedValue(uint256 _storageId) external {
+        EncryptedStorage storage storage_ = encryptedStorages[_storageId];
+        require(storage_.owner == msg.sender, "Not the owner");
+        require(storage_.isEncrypted, "Value not encrypted");
+
+        // CRITICAL BUG: Decryption will fail due to missing initialization
+        // The decryption request will not work properly because:
+        // 1. FHE context was not properly initialized during storage
+        // 2. Permission setup was incomplete
+        // 3. Decryption parameters were not configured
+
+        bytes32[] memory cts = new bytes32[](1);
+        cts[0] = FHE.toBytes32(storage_.storedValue);
+
+        uint256 requestId = FHE.requestDecryption(cts, this.valueDecryptionCallback.selector);
+        _requestToEvent[requestId] = _storageId; // Reuse mapping for simplicity
+    }
+
+    /// @notice Callback for value decryption
+    function valueDecryptionCallback(
+        uint256 requestId,
+        bytes memory cleartexts,
+        bytes[] memory /*signatures*/
+    ) public returns (bool) {
+        uint256 storageId = _requestToEvent[requestId];
+        EncryptedStorage storage storage_ = encryptedStorages[storageId];
+
+        require(cleartexts.length >= 4, "Invalid cleartexts length");
+        uint32 decryptedValue;
+        assembly {
+            decryptedValue := shr(224, mload(add(cleartexts, 32)))
+        }
+
+        emit ValueRetrieved(storageId, storage_.owner, decryptedValue);
+        return true;
+    }
+
+    /// @notice Get encrypted storage count for user
+    function getUserStorageCount(address _user) external view returns (uint256) {
+        return userEncryptedStorages[_user].length;
     }
 }
 
