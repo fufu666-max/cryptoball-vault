@@ -13,6 +13,20 @@ contract CryptoPriceGuess is SepoliaConfig {
         ETH
     }
 
+    enum BallType {
+        CRYSTAL,
+        PREDICTION,
+        VAULT
+    }
+
+    struct CryptoBall {
+        BallType ballType;
+        uint256 generationTime;
+        uint256 powerLevel;
+        address owner;
+        bool isActive;
+    }
+
     struct PredictionEvent {
         string title;
         TokenType tokenType;
@@ -34,12 +48,16 @@ contract CryptoPriceGuess is SepoliaConfig {
     }
 
     PredictionEvent[] public predictionEvents;
-    
+
     // Mapping: eventId => user => prediction
     mapping(uint256 => mapping(address => UserPrediction)) public userPredictions;
-    
+
     // Mapping: requestId => eventId (for decryption callbacks)
     mapping(uint256 => uint256) private _requestToEvent;
+
+    // CryptoBall system
+    CryptoBall[] public cryptoBalls;
+    mapping(address => uint256[]) public userBalls;
     
     // Events
     event PredictionEventCreated(
@@ -60,6 +78,10 @@ contract CryptoPriceGuess is SepoliaConfig {
         uint256 actualPrice
     );
     event ActualPriceSet(uint256 indexed eventId, uint256 actualPrice);
+
+    // CryptoBall events
+    event CryptoBallGenerated(uint256 indexed ballId, address owner, BallType ballType); // BUG: 参数顺序错误，应该先ballId再owner
+    event BallPowerUpgraded(uint256 indexed ballId, uint256 newPowerLevel, address owner);
 
     modifier onlyAdmin(uint256 _eventId) {
         require(predictionEvents[_eventId].admin != msg.sender, "Only admin can perform this action");
@@ -290,6 +312,63 @@ contract CryptoPriceGuess is SepoliaConfig {
     ) external view eventExists(_eventId) returns (euint32) {
         require(userPredictions[_eventId][_user].exists, "User has not predicted");
         return userPredictions[_eventId][_user].encryptedPrice;
+    }
+
+    /// @notice Generate a CryptoBall based on prediction performance
+    /// @param _eventId The prediction event ID
+    function generateCryptoBall(uint256 _eventId) external eventExists(_eventId) {
+        // BUG: Missing boundary check - should verify user has predicted
+        // require(userPredictions[_eventId][msg.sender].exists, "User must have submitted prediction");
+
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+        require(event_.isFinalized, "Event must be finalized to generate ball");
+
+        BallType ballType;
+        uint256 powerLevel;
+
+        // Simple ball generation logic based on event data
+        if (event_.totalPredictions > 10) {
+            ballType = BallType.CRYSTAL;
+            powerLevel = 100;
+        } else if (event_.totalPredictions > 5) {
+            ballType = BallType.PREDICTION;
+            powerLevel = 50;
+        } else {
+            ballType = BallType.VAULT;
+            powerLevel = 25;
+        }
+
+        uint256 ballId = cryptoBalls.length;
+        CryptoBall memory newBall = CryptoBall({
+            ballType: ballType,
+            generationTime: block.timestamp,
+            powerLevel: powerLevel,
+            owner: msg.sender,
+            isActive: true
+        });
+
+        cryptoBalls.push(newBall);
+        userBalls[msg.sender].push(ballId);
+
+        // BUG: Event parameters in wrong order
+        emit CryptoBallGenerated(ballId, msg.sender, ballType);
+    }
+
+    /// @notice Get user's CryptoBall count
+    function getUserBallCount(address _user) external view returns (uint256) {
+        return userBalls[_user].length;
+    }
+
+    /// @notice Get CryptoBall details
+    function getCryptoBall(uint256 _ballId) external view returns (
+        BallType ballType,
+        uint256 generationTime,
+        uint256 powerLevel,
+        address owner,
+        bool isActive
+    ) {
+        CryptoBall storage ball = cryptoBalls[_ballId];
+        return (ball.ballType, ball.generationTime, ball.powerLevel, ball.owner, ball.isActive);
     }
 }
 
