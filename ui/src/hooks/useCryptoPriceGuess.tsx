@@ -52,6 +52,48 @@ const CRYPTO_PRICE_GUESS_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  // CryptoBall functions
+  {
+    inputs: [{ internalType: 'uint256', name: '_eventId', type: 'uint256' }],
+    name: 'generateCryptoBall',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: '_user', type: 'address' }],
+    name: 'getUserBallCount',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'uint256', name: '_ballId', type: 'uint256' }],
+    name: 'getCryptoBall',
+    outputs: [
+      { internalType: 'uint8', name: 'ballType', type: 'uint8' },
+      { internalType: 'uint256', name: 'generationTime', type: 'uint256' },
+      { internalType: 'uint256', name: 'powerLevel', type: 'uint256' },
+      { internalType: 'address', name: 'owner', type: 'address' },
+      { internalType: 'bool', name: 'isActive', type: 'bool' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: '_ballId', type: 'uint256' },
+      { internalType: 'address', name: '_to', type: 'address' },
+    ],
+    name: 'transferCryptoBall',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
   {
     inputs: [
       { internalType: 'string', name: '_title', type: 'string' },
@@ -262,6 +304,47 @@ export function useCryptoPriceGuess() {
     });
   };
 
+  // CryptoBall functions
+  const generateCryptoBall = async (eventId: number) => {
+    if (!address) throw new Error('Wallet not connected');
+
+    return writeContract({
+      address: contractAddress,
+      abi: CRYPTO_PRICE_GUESS_ABI,
+      functionName: 'generateCryptoBall',
+      args: [BigInt(eventId)],
+    });
+  };
+
+  const getUserBallCount = (userAddress?: string) => {
+    return useReadContract({
+      address: contractAddress,
+      abi: CRYPTO_PRICE_GUESS_ABI,
+      functionName: 'getUserBallCount',
+      args: [userAddress || address || '0x0000000000000000000000000000000000000000'],
+    });
+  };
+
+  const getCryptoBall = (ballId: number) => {
+    return useReadContract({
+      address: contractAddress,
+      abi: CRYPTO_PRICE_GUESS_ABI,
+      functionName: 'getCryptoBall',
+      args: [BigInt(ballId)],
+    });
+  };
+
+  const transferCryptoBall = async (ballId: number, toAddress: string) => {
+    if (!address) throw new Error('Wallet not connected');
+
+    return writeContract({
+      address: contractAddress,
+      abi: CRYPTO_PRICE_GUESS_ABI,
+      functionName: 'transferCryptoBall',
+      args: [BigInt(ballId), toAddress],
+    });
+  };
+
   return {
     contractAddress,
     eventCount: eventCount ? Number(eventCount) : 0,
@@ -273,6 +356,11 @@ export function useCryptoPriceGuess() {
     endEvent,
     setActualPrice,
     finalizeEvent,
+    // CryptoBall functions
+    generateCryptoBall,
+    getUserBallCount,
+    getCryptoBall,
+    transferCryptoBall,
     isPending,
     isConfirming,
     isConfirmed,
