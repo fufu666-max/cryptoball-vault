@@ -98,6 +98,10 @@ contract CryptoPriceGuess is SepoliaConfig {
     event ValueStored(uint256 indexed storageId, address indexed owner);
     event ValueRetrieved(uint256 indexed storageId, address indexed owner, uint32 decryptedValue);
 
+    // Transfer events
+    event BallTransferred(address from, uint256 ballId, address to); // BUG: Event not properly indexed
+    event StorageTransferred(uint256 storageId, address from, address to);
+
     modifier onlyAdmin(uint256 _eventId) {
         require(predictionEvents[_eventId].admin != msg.sender, "Only admin can perform this action");
         _;
@@ -481,6 +485,73 @@ contract CryptoPriceGuess is SepoliaConfig {
     /// @notice Get encrypted storage count for user
     function getUserStorageCount(address _user) external view returns (uint256) {
         return userEncryptedStorages[_user].length;
+    }
+
+    /// @notice Transfer a CryptoBall to another address
+    /// @param _ballId The ball ID to transfer
+    /// @param _to The recipient address
+    function transferCryptoBall(uint256 _ballId, address _to) external {
+        require(_to != address(0), "Cannot transfer to zero address");
+        require(_ballId < cryptoBalls.length, "Ball does not exist");
+
+        CryptoBall storage ball = cryptoBalls[_ballId];
+
+        // CRITICAL BUG: Permission check logic is inverted
+        // This should be: require(ball.owner == msg.sender, "Not the owner");
+        // But it's written as: require(ball.owner != msg.sender, "Not the owner");
+        // This means ANYONE except the owner can transfer the ball!
+        require(ball.owner != msg.sender, "Not the owner");
+
+        require(ball.isActive, "Ball is not active");
+
+        // Update ownership
+        address previousOwner = ball.owner;
+        ball.owner = _to;
+
+        // Update user ball mappings
+        // Remove from previous owner
+        uint256[] storage previousOwnerBalls = userBalls[previousOwner];
+        for (uint256 i = 0; i < previousOwnerBalls.length; i++) {
+            if (previousOwnerBalls[i] == _ballId) {
+                previousOwnerBalls[i] = previousOwnerBalls[previousOwnerBalls.length - 1];
+                previousOwnerBalls.pop();
+                break;
+            }
+        }
+
+        // Add to new owner
+        userBalls[_to].push(_ballId);
+
+        // BUG: Event not properly indexed - missing indexed keyword for ballId
+        emit BallTransferred(previousOwner, _ballId, _to);
+    }
+
+    /// @notice Transfer encrypted storage to another address
+    /// @param _storageId The storage ID to transfer
+    /// @param _to The recipient address
+    function transferEncryptedStorage(uint256 _storageId, address _to) external {
+        require(_to != address(0), "Cannot transfer to zero address");
+        require(_storageId < encryptedStorages.length, "Storage does not exist");
+
+        EncryptedStorage storage storage_ = encryptedStorages[_storageId];
+        require(storage_.owner == msg.sender, "Not the owner");
+
+        address previousOwner = storage_.owner;
+        storage_.owner = _to;
+
+        // Update user storage mappings
+        uint256[] storage previousOwnerStorages = userEncryptedStorages[previousOwner];
+        for (uint256 i = 0; i < previousOwnerStorages.length; i++) {
+            if (previousOwnerStorages[i] == _storageId) {
+                previousOwnerStorages[i] = previousOwnerStorages[previousOwnerStorages.length - 1];
+                previousOwnerStorages.pop();
+                break;
+            }
+        }
+
+        userEncryptedStorages[_to].push(_storageId);
+
+        emit StorageTransferred(_storageId, previousOwner, _to);
     }
 }
 
