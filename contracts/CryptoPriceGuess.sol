@@ -103,7 +103,7 @@ contract CryptoPriceGuess is SepoliaConfig {
     event StorageTransferred(uint256 storageId, address from, address to);
 
     modifier onlyAdmin(uint256 _eventId) {
-        require(predictionEvents[_eventId].admin != msg.sender, "Only admin can perform this action");
+        require(predictionEvents[_eventId].admin == msg.sender, "Only admin can perform this action");
         _;
     }
 
