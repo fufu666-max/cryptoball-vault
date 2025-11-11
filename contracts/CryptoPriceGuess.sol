@@ -490,11 +490,8 @@ contract CryptoPriceGuess is SepoliaConfig {
 
         CryptoBall storage ball = cryptoBalls[_ballId];
 
-        // CRITICAL BUG: Permission check logic is inverted
-        // This should be: require(ball.owner == msg.sender, "Not the owner");
-        // But it's written as: require(ball.owner != msg.sender, "Not the owner");
-        // This means ANYONE except the owner can transfer the ball!
-        require(ball.owner != msg.sender, "Not the owner");
+        // Verify ownership before transfer
+        require(ball.owner == msg.sender, "Not the owner");
 
         require(ball.isActive, "Ball is not active");
 
