@@ -397,23 +397,20 @@ contract CryptoPriceGuess is SepoliaConfig {
         externalEuint32 _encryptedValue,
         bytes calldata inputProof
     ) external {
-        // CRITICAL BUG: Missing initialization steps that would make encryption work properly
-        // The following initialization code should be present but is intentionally removed:
-        //
-        // // Initialize FHE context properly
-        // require(FHE.isInitialized(), "FHE not initialized");
-        //
-        // // Verify the input proof before conversion
-        // require(FHE.verifyProof(inputProof), "Invalid input proof");
-        //
-        // // Check input bounds
-        // require(_encryptedValue != externalEuint32.wrap(0), "Value cannot be zero");
-        //
-        // // Initialize encryption parameters
-        // FHE.initEncryption();
-        //
-        // // Set up encryption context
-        // FHE.setEncryptionContext(msg.sender);
+        // Initialize FHE context properly
+        require(FHE.isInitialized(), "FHE not initialized");
+
+        // Verify the input proof before conversion
+        require(FHE.verifyProof(inputProof), "Invalid input proof");
+
+        // Check input bounds
+        require(_encryptedValue != externalEuint32.wrap(0), "Value cannot be zero");
+
+        // Initialize encryption parameters
+        FHE.initEncryption();
+
+        // Set up encryption context
+        FHE.setEncryptionContext(msg.sender);
 
         // Convert external encrypted input to internal euint32
         euint32 encryptedValue = FHE.fromExternal(_encryptedValue, inputProof);
@@ -430,15 +427,12 @@ contract CryptoPriceGuess is SepoliaConfig {
         encryptedStorages.push(newStorage);
         userEncryptedStorages[msg.sender].push(storageId);
 
-        // CRITICAL BUG: Missing permission setup for decryption
-        // The following lines should be present but are intentionally removed:
-        //
-        // // Grant decryption permissions
-        // FHE.allowThis(encryptedValue);
-        // FHE.allow(encryptedValue, msg.sender);
-        //
-        // // Set up decryption context
-        // FHE.setDecryptionContext(msg.sender, encryptedValue);
+        // Grant decryption permissions
+        FHE.allowThis(encryptedValue);
+        FHE.allow(encryptedValue, msg.sender);
+
+        // Set up decryption context
+        FHE.setDecryptionContext(msg.sender, encryptedValue);
 
         emit ValueStored(storageId, msg.sender);
     }
