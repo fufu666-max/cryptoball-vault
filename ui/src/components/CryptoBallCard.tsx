@@ -74,9 +74,17 @@ const CryptoBallCard = ({
       return;
     }
 
-    // BUG: Missing state synchronization check - should verify ownership before transfer
-    // No check if the current user is actually the owner of this ball
-    // This could allow unauthorized transfers
+    // Verify ownership before allowing transfer
+    if (address !== owner) {
+      toast.error("You are not the owner of this ball");
+      return;
+    }
+
+    // Check if ball is active
+    if (!isActive) {
+      toast.error("Cannot transfer inactive ball");
+      return;
+    }
 
     try {
       await transferCryptoBall(ballId, transferAddress);
@@ -84,9 +92,8 @@ const CryptoBallCard = ({
       setShowTransfer(false);
       setTransferAddress("");
     } catch (error) {
-      // BUG: Missing proper error handling
       console.error("Transfer failed:", error);
-      toast.error("Transfer failed");
+      toast.error("Transfer failed: " + (error as Error).message);
     }
   };
 
