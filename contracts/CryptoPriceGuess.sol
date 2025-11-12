@@ -369,8 +369,7 @@ contract CryptoPriceGuess is SepoliaConfig {
         cryptoBalls.push(newBall);
         userBalls[msg.sender].push(ballId);
 
-        // BUG: Event parameters in wrong order
-        emit CryptoBallGenerated(ballId, msg.sender, ballType);
+        emit CryptoBallGenerated(ballId, ballType, msg.sender);
     }
 
     /// @notice Get user's CryptoBall count
