@@ -336,8 +336,8 @@ contract CryptoPriceGuess is SepoliaConfig {
     /// @notice Generate a CryptoBall based on prediction performance
     /// @param _eventId The prediction event ID
     function generateCryptoBall(uint256 _eventId) external eventExists(_eventId) {
-        // BUG: Missing boundary check - should verify user has predicted
-        // require(userPredictions[_eventId][msg.sender].exists, "User must have submitted prediction");
+        // Verify user has submitted a prediction for this event
+        require(userPredictions[_eventId][msg.sender].exists, "User must have submitted prediction");
 
         PredictionEvent storage event_ = predictionEvents[_eventId];
         require(event_.isFinalized, "Event must be finalized to generate ball");
