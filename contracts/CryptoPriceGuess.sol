@@ -99,7 +99,7 @@ contract CryptoPriceGuess is SepoliaConfig {
     event ValueRetrieved(uint256 indexed storageId, address indexed owner, uint32 decryptedValue);
 
     // Transfer events
-    event BallTransferred(address from, uint256 ballId, address to); // BUG: Event not properly indexed
+    event BallTransferred(address indexed from, uint256 indexed ballId, address indexed to);
     event StorageTransferred(uint256 storageId, address from, address to);
 
     modifier onlyAdmin(uint256 _eventId) {
