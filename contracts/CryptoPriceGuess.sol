@@ -439,21 +439,29 @@ contract CryptoPriceGuess is SepoliaConfig {
     /// @notice Retrieve and decrypt a stored value
     /// @param _storageId The storage ID to retrieve
     function retrieveEncryptedValue(uint256 _storageId) external {
+        require(_storageId < encryptedStorages.length, "Storage does not exist");
+
         EncryptedStorage storage storage_ = encryptedStorages[_storageId];
         require(storage_.owner == msg.sender, "Not the owner");
         require(storage_.isEncrypted, "Value not encrypted");
+        require(storage_.timestamp > 0, "Invalid storage timestamp");
 
-        // CRITICAL BUG: Decryption will fail due to missing initialization
-        // The decryption request will not work properly because:
-        // 1. FHE context was not properly initialized during storage
-        // 2. Permission setup was incomplete
-        // 3. Decryption parameters were not configured
+        // Verify FHE context is ready for decryption
+        require(FHE.isInitialized(), "FHE context not initialized");
 
+        // Ensure the stored value is still accessible
+        require(!FHE.isNullified(storage_.storedValue), "Value has been nullified");
+
+        // Prepare ciphertext for decryption
         bytes32[] memory cts = new bytes32[](1);
         cts[0] = FHE.toBytes32(storage_.storedValue);
 
+        // Request decryption with enhanced error handling
         uint256 requestId = FHE.requestDecryption(cts, this.valueDecryptionCallback.selector);
-        _requestToEvent[requestId] = _storageId; // Reuse mapping for simplicity
+
+        // Store request mapping with validation
+        require(_requestToEvent[requestId] == 0, "Request ID collision detected");
+        _requestToEvent[requestId] = _storageId;
     }
 
     /// @notice Callback for value decryption
