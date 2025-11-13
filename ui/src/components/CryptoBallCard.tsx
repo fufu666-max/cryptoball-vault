@@ -51,7 +51,12 @@ const CryptoBallCard = ({
 
   const handleGenerateBall = async (eventId: number) => {
     if (!isConnected) {
-      toast.error("Connect wallet first");
+      toast.error("Please connect your wallet to generate CryptoBalls");
+      return;
+    }
+
+    if (!address) {
+      toast.error("Wallet address not available");
       return;
     }
 
@@ -59,10 +64,21 @@ const CryptoBallCard = ({
     try {
       await generateCryptoBall(eventId);
       toast.success("CryptoBall generated successfully!");
-    } catch (error) {
-      // BUG: Missing error handling - no proper error message or fallback
+    } catch (error: any) {
       console.error("Failed to generate ball:", error);
-      toast.error("Failed to generate ball");
+
+      // Enhanced error handling with specific messages
+      if (error?.message?.includes("User must have submitted prediction")) {
+        toast.error("You must submit a prediction for this event before generating a ball");
+      } else if (error?.message?.includes("Event must be finalized")) {
+        toast.error("Event must be finalized before generating balls");
+      } else if (error?.message?.includes("User denied")) {
+        toast.error("Transaction cancelled by user");
+      } else if (error?.message?.includes("insufficient funds")) {
+        toast.error("Insufficient funds for transaction");
+      } else {
+        toast.error("Failed to generate CryptoBall: " + (error?.message || "Unknown error"));
+      }
     } finally {
       setIsGenerating(false);
     }
