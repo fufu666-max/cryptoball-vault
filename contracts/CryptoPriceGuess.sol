@@ -181,31 +181,86 @@ contract CryptoPriceGuess is SepoliaConfig {
         require(!userPredictions[_eventId][msg.sender].exists, "Already submitted prediction");
 
         PredictionEvent storage event_ = predictionEvents[_eventId];
-        
+
         // Convert external encrypted input to internal euint32
         euint32 encryptedPrice = FHE.fromExternal(_encryptedPrice, inputProof);
-        
+
         // Store user prediction
         userPredictions[_eventId][msg.sender] = UserPrediction({
             encryptedPrice: encryptedPrice,
             timestamp: block.timestamp,
             exists: true
         });
-        
+
         // Add the encrypted price to the sum
         if (event_.totalPredictions == 0) {
             event_.encryptedPriceSum = encryptedPrice;
         } else {
             event_.encryptedPriceSum = FHE.add(event_.encryptedPriceSum, encryptedPrice);
         }
-        
+
         // Grant permissions
         FHE.allowThis(event_.encryptedPriceSum);
         FHE.allow(event_.encryptedPriceSum, event_.admin);
-        
+
         event_.totalPredictions++;
-        
+
         emit PredictionSubmitted(_eventId, msg.sender);
+    }
+
+    /// @notice Submit multiple encrypted price predictions in batch
+    /// @param _eventIds Array of prediction event IDs
+    /// @param _encryptedPrices Array of encrypted price predictions
+    /// @param _inputProofs Array of proofs for the encrypted inputs
+    /// @dev Batch submission for improved efficiency
+    function submitBatchPredictions(
+        uint256[] calldata _eventIds,
+        externalEuint32[] calldata _encryptedPrices,
+        bytes[] calldata _inputProofs
+    ) external {
+        require(_eventIds.length == _encryptedPrices.length, "Array length mismatch");
+        require(_eventIds.length == _inputProofs.length, "Array length mismatch");
+        require(_eventIds.length > 0, "Cannot submit empty batch");
+        require(_eventIds.length <= 10, "Batch size too large");
+
+        for (uint256 i = 0; i < _eventIds.length; i++) {
+            uint256 eventId = _eventIds[i];
+
+            // Validate event exists and is active
+            require(eventId < predictionEvents.length, "Event does not exist");
+            PredictionEvent storage event_ = predictionEvents[eventId];
+            require(event_.isActive, "Event is not active");
+            require(block.timestamp < event_.endTime, "Event has ended");
+            require(!event_.isFinalized, "Event is finalized");
+
+            // Check user hasn't already predicted
+            require(!userPredictions[eventId][msg.sender].exists, "Already submitted prediction for event");
+
+            // Convert external encrypted input to internal euint32
+            euint32 encryptedPrice = FHE.fromExternal(_encryptedPrices[i], _inputProofs[i]);
+
+            // Store user prediction
+            userPredictions[eventId][msg.sender] = UserPrediction({
+                encryptedPrice: encryptedPrice,
+                timestamp: block.timestamp,
+                exists: true
+            });
+
+            // Add the encrypted price to the sum
+            if (event_.totalPredictions == 0) {
+                event_.encryptedPriceSum = encryptedPrice;
+            } else {
+                event_.encryptedPriceSum = FHE.add(event_.encryptedPriceSum, encryptedPrice);
+            }
+
+            // Grant permissions
+            FHE.allowThis(event_.encryptedPriceSum);
+            FHE.allow(event_.encryptedPriceSum, event_.admin);
+
+            event_.totalPredictions++;
+
+            emit PredictionSubmitted(eventId, msg.sender);
+        }
     }
 
     /// @notice Get the encrypted price sum (only admin can decrypt)
