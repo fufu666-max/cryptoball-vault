@@ -59,6 +59,18 @@ contract CryptoPriceGuess is SepoliaConfig {
     CryptoBall[] public cryptoBalls;
     mapping(address => uint256[]) public userBalls;
 
+    // CryptoBall collection system
+    struct BallCollection {
+        string name;
+        address owner;
+        uint256[] ballIds;
+        uint256 createdAt;
+        bool isPublic;
+    }
+
+    BallCollection[] public ballCollections;
+    mapping(address => uint256[]) public userCollections;
+
     // Encrypted storage system
     struct EncryptedStorage {
         euint32 storedValue;
@@ -93,6 +105,11 @@ contract CryptoPriceGuess is SepoliaConfig {
     // CryptoBall events
     event CryptoBallGenerated(uint256 indexed ballId, address owner, BallType ballType); // BUG: 参数顺序错误，应该先ballId再owner
     event BallPowerUpgraded(uint256 indexed ballId, uint256 newPowerLevel, address owner);
+
+    // Collection events
+    event CollectionCreated(uint256 indexed collectionId, address indexed owner, string name);
+    event BallAddedToCollection(uint256 indexed collectionId, uint256 indexed ballId, address owner);
+    event BallRemovedFromCollection(uint256 indexed collectionId, uint256 indexed ballId, address owner);
 
     // Encrypted storage events
     event ValueStored(uint256 indexed storageId, address indexed owner);
@@ -486,6 +503,105 @@ contract CryptoPriceGuess is SepoliaConfig {
     /// @notice Get encrypted storage count for user
     function getUserStorageCount(address _user) external view returns (uint256) {
         return userEncryptedStorages[_user].length;
+    }
+
+    /// @notice Create a new CryptoBall collection
+    /// @param _name The name of the collection
+    /// @param _isPublic Whether the collection is publicly visible
+    function createBallCollection(string memory _name, bool _isPublic) external returns (uint256) {
+        require(bytes(_name).length > 0, "Collection name cannot be empty");
+        require(bytes(_name).length <= 50, "Collection name too long");
+
+        uint256 collectionId = ballCollections.length;
+
+        BallCollection memory newCollection = BallCollection({
+            name: _name,
+            owner: msg.sender,
+            ballIds: new uint256[](0),
+            createdAt: block.timestamp,
+            isPublic: _isPublic
+        });
+
+        ballCollections.push(newCollection);
+        userCollections[msg.sender].push(collectionId);
+
+        emit CollectionCreated(collectionId, msg.sender, _name);
+        return collectionId;
+    }
+
+    /// @notice Add a ball to a collection
+    /// @param _collectionId The collection ID
+    /// @param _ballId The ball ID to add
+    function addBallToCollection(uint256 _collectionId, uint256 _ballId) external {
+        require(_collectionId < ballCollections.length, "Collection does not exist");
+        require(_ballId < cryptoBalls.length, "Ball does not exist");
+
+        BallCollection storage collection = ballCollections[_collectionId];
+        CryptoBall storage ball = cryptoBalls[_ballId];
+
+        require(collection.owner == msg.sender, "Not collection owner");
+        require(ball.owner == msg.sender, "Not ball owner");
+        require(ball.isActive, "Ball is not active");
+
+        // Check if ball is already in collection
+        for (uint256 i = 0; i < collection.ballIds.length; i++) {
+            require(collection.ballIds[i] != _ballId, "Ball already in collection");
+        }
+
+        collection.ballIds.push(_ballId);
+        emit BallAddedToCollection(_collectionId, _ballId, msg.sender);
+    }
+
+    /// @notice Remove a ball from a collection
+    /// @param _collectionId The collection ID
+    /// @param _ballId The ball ID to remove
+    function removeBallFromCollection(uint256 _collectionId, uint256 _ballId) external {
+        require(_collectionId < ballCollections.length, "Collection does not exist");
+
+        BallCollection storage collection = ballCollections[_collectionId];
+        require(collection.owner == msg.sender, "Not collection owner");
+
+        // Find and remove the ball
+        for (uint256 i = 0; i < collection.ballIds.length; i++) {
+            if (collection.ballIds[i] == _ballId) {
+                collection.ballIds[i] = collection.ballIds[collection.ballIds.length - 1];
+                collection.ballIds.pop();
+                emit BallRemovedFromCollection(_collectionId, _ballId, msg.sender);
+                return;
+            }
+        }
+
+        revert("Ball not found in collection");
+    }
+
+    /// @notice Get collection details
+    /// @param _collectionId The collection ID
+    function getBallCollection(uint256 _collectionId) external view returns (
+        string memory name,
+        address owner,
+        uint256[] memory ballIds,
+        uint256 createdAt,
+        bool isPublic
+    ) {
+        require(_collectionId < ballCollections.length, "Collection does not exist");
+
+        BallCollection storage collection = ballCollections[_collectionId];
+
+        // Only owner or public collections can be viewed
+        require(collection.owner == msg.sender || collection.isPublic, "Collection not accessible");
+
+        return (
+            collection.name,
+            collection.owner,
+            collection.ballIds,
+            collection.createdAt,
+            collection.isPublic
+        );
+    }
+
+    /// @notice Get user's collection count
+    function getUserCollectionCount(address _user) external view returns (uint256) {
+        return userCollections[_user].length;
     }
 
     /// @notice Transfer a CryptoBall to another address
