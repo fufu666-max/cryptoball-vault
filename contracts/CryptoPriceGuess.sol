@@ -8,6 +8,11 @@ import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 /// @notice A privacy-preserving prediction market where users submit encrypted price predictions
 /// @dev Predictions are encrypted using FHE and only decrypted after the prediction period ends
 contract CryptoPriceGuess is SepoliaConfig {
+
+    constructor() {
+        priceFeedAdmin = msg.sender;
+        authorizedPriceFeeders[msg.sender] = true;
+    }
     enum TokenType {
         BTC,
         ETH
@@ -71,6 +76,21 @@ contract CryptoPriceGuess is SepoliaConfig {
     BallCollection[] public ballCollections;
     mapping(address => uint256[]) public userCollections;
 
+    // Price oracle system
+    struct PriceData {
+        uint256 price;
+        uint256 timestamp;
+        address updater;
+        bool isValid;
+    }
+
+    mapping(TokenType => PriceData) public latestPrices;
+    mapping(TokenType => PriceData[]) public priceHistory;
+
+    // Price feeder authorization
+    mapping(address => bool) public authorizedPriceFeeders;
+    address public priceFeedAdmin;
+
     // Encrypted storage system
     struct EncryptedStorage {
         euint32 storedValue;
@@ -110,6 +130,10 @@ contract CryptoPriceGuess is SepoliaConfig {
     event CollectionCreated(uint256 indexed collectionId, address indexed owner, string name);
     event BallAddedToCollection(uint256 indexed collectionId, uint256 indexed ballId, address owner);
     event BallRemovedFromCollection(uint256 indexed collectionId, uint256 indexed ballId, address owner);
+
+    // Price oracle events
+    event PriceUpdated(TokenType indexed tokenType, uint256 price, uint256 timestamp, address updater);
+    event PriceFeedAuthorized(address indexed feeder, bool authorized);
 
     // Encrypted storage events
     event ValueStored(uint256 indexed storageId, address indexed owner);
@@ -779,6 +803,162 @@ contract CryptoPriceGuess is SepoliaConfig {
     /// @notice Get user's collection count
     function getUserCollectionCount(address _user) external view returns (uint256) {
         return userCollections[_user].length;
+    }
+
+    /// @notice Authorize or revoke price feeder permissions
+    /// @param _feeder The address to authorize/revoke
+    /// @param _authorized Whether to authorize or revoke
+    function setPriceFeederAuthorization(address _feeder, bool _authorized) external {
+        require(msg.sender == priceFeedAdmin, "Only price feed admin can authorize feeders");
+        authorizedPriceFeeders[_feeder] = _authorized;
+        emit PriceFeedAuthorized(_feeder, _authorized);
+    }
+
+    /// @notice Update price for a token type (authorized feeders only)
+    /// @param _tokenType The token type (BTC or ETH)
+    /// @param _price The current price in USD * 100 (e.g., 50000 = $50,000)
+    function updatePrice(TokenType _tokenType, uint256 _price) external {
+        require(authorizedPriceFeeders[msg.sender], "Not authorized to update prices");
+        require(_price > 0, "Price must be greater than 0");
+        require(_price < 100000000, "Price seems unreasonably high"); // Max $1M
+
+        PriceData memory newPriceData = PriceData({
+            price: _price,
+            timestamp: block.timestamp,
+            updater: msg.sender,
+            isValid: true
+        });
+
+        latestPrices[_tokenType] = newPriceData;
+        priceHistory[_tokenType].push(newPriceData);
+
+        // Keep only last 100 price updates for gas efficiency
+        if (priceHistory[_tokenType].length > 100) {
+            // Remove oldest prices (keep most recent 100)
+            for (uint256 i = 0; i < priceHistory[_tokenType].length - 100; i++) {
+                delete priceHistory[_tokenType][i];
+            }
+            // This is simplified - in production you'd want a more efficient circular buffer
+        }
+
+        emit PriceUpdated(_tokenType, _price, block.timestamp, msg.sender);
+    }
+
+    /// @notice Get current price for a token type
+    /// @param _tokenType The token type
+    function getCurrentPrice(TokenType _tokenType) external view returns (
+        uint256 price,
+        uint256 timestamp,
+        address updater,
+        bool isValid
+    ) {
+        PriceData memory priceData = latestPrices[_tokenType];
+        return (
+            priceData.price,
+            priceData.timestamp,
+            priceData.updater,
+            priceData.isValid
+        );
+    }
+
+    /// @notice Get price history for a token type
+    /// @param _tokenType The token type
+    /// @param _limit Maximum number of historical prices to return
+    function getPriceHistory(TokenType _tokenType, uint256 _limit) external view returns (
+        uint256[] memory prices,
+        uint256[] memory timestamps,
+        address[] memory updaters
+    ) {
+        PriceData[] memory history = priceHistory[_tokenType];
+        uint256 historyLength = history.length;
+        uint256 returnCount = _limit > historyLength ? historyLength : _limit;
+
+        uint256[] memory returnPrices = new uint256[](returnCount);
+        uint256[] memory returnTimestamps = new uint256[](returnCount);
+        address[] memory returnUpdaters = new address[](returnCount);
+
+        // Return most recent prices first
+        for (uint256 i = 0; i < returnCount; i++) {
+            uint256 historyIndex = historyLength - 1 - i;
+            PriceData memory priceData = history[historyIndex];
+            returnPrices[i] = priceData.price;
+            returnTimestamps[i] = priceData.timestamp;
+            returnUpdaters[i] = priceData.updater;
+        }
+
+        return (returnPrices, returnTimestamps, returnUpdaters);
+    }
+
+    /// @notice Get price statistics for a token type
+    /// @param _tokenType The token type
+    function getPriceStatistics(TokenType _tokenType) external view returns (
+        uint256 currentPrice,
+        uint256 averagePrice,
+        uint256 highestPrice,
+        uint256 lowestPrice,
+        uint256 priceChange24h,
+        uint256 volatility
+    ) {
+        PriceData[] memory history = priceHistory[_tokenType];
+        uint256 historyLength = history.length;
+
+        if (historyLength == 0) {
+            return (0, 0, 0, 0, 0, 0);
+        }
+
+        uint256 current = latestPrices[_tokenType].price;
+        uint256 total = 0;
+        uint256 highest = 0;
+        uint256 lowest = type(uint256).max;
+        uint256 price24hAgo = 0;
+
+        // Calculate statistics from available history
+        for (uint256 i = 0; i < historyLength; i++) {
+            uint256 price = history[i].price;
+            total += price;
+
+            if (price > highest) highest = price;
+            if (price < lowest) lowest = price;
+
+            // Find price from ~24 hours ago (assuming updates every few hours)
+            if (i >= 8 && price24hAgo == 0) { // Rough approximation
+                price24hAgo = price;
+            }
+        }
+
+        uint256 average = total / historyLength;
+        uint256 change24h = price24hAgo > 0 ? current > price24hAgo ?
+            current - price24hAgo : price24hAgo - current : 0;
+
+        // Simplified volatility calculation (standard deviation)
+        uint256 variance = 0;
+        for (uint256 i = 0; i < historyLength; i++) {
+            uint256 diff = history[i].price > average ?
+                history[i].price - average : average - history[i].price;
+            variance += diff * diff;
+        }
+        uint256 volatilityValue = historyLength > 1 ? sqrt(variance / (historyLength - 1)) : 0;
+
+        return (
+            current,
+            average,
+            highest,
+            lowest,
+            change24h,
+            volatilityValue
+        );
+    }
+
+    /// @notice Simple square root function for volatility calculation
+    function sqrt(uint256 x) internal pure returns (uint256) {
+        if (x == 0) return 0;
+        uint256 z = (x + 1) / 2;
+        uint256 y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        }
+        return y;
     }
 
     /// @notice Transfer a CryptoBall to another address
