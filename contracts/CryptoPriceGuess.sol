@@ -396,6 +396,128 @@ contract CryptoPriceGuess is SepoliaConfig {
         return userPredictions[_eventId][_user].exists;
     }
 
+    /// @notice Get prediction statistics for an event
+    /// @param _eventId The event ID
+    function getPredictionStatistics(uint256 _eventId) external view eventExists(_eventId) returns (
+        uint256 totalPredictions,
+        uint256 activePredictions,
+        uint256 finalizedPredictions,
+        uint256 averagePredictionAge,
+        uint256 uniquePredictors
+    ) {
+        PredictionEvent storage event_ = predictionEvents[_eventId];
+
+        uint256 activeCount = 0;
+        uint256 finalizedCount = 0;
+        uint256 totalAge = 0;
+        uint256 predictorCount = 0;
+
+        // This is a simplified statistics calculation
+        // In production, you might want to store more detailed statistics
+        if (event_.isFinalized) {
+            finalizedCount = event_.totalPredictions;
+        } else if (event_.isActive) {
+            activeCount = event_.totalPredictions;
+        }
+
+        // Calculate average prediction age (simplified)
+        if (event_.totalPredictions > 0) {
+            totalAge = (block.timestamp - event_.targetDate) * event_.totalPredictions;
+            averagePredictionAge = totalAge / event_.totalPredictions;
+        }
+
+        // For unique predictors, we'd need additional tracking
+        // For now, assume each prediction is from a unique predictor
+        predictorCount = event_.totalPredictions;
+
+        return (
+            event_.totalPredictions,
+            activeCount,
+            finalizedCount,
+            averagePredictionAge,
+            predictorCount
+        );
+    }
+
+    /// @notice Get user's prediction history across all events
+    /// @param _user The user address
+    function getUserPredictionHistory(address _user) external view returns (
+        uint256 totalPredictions,
+        uint256 activePredictions,
+        uint256 finalizedPredictions,
+        uint256[] memory participatedEventIds
+    ) {
+        uint256 eventCount = predictionEvents.length;
+        uint256[] memory tempEventIds = new uint256[](eventCount);
+        uint256 participatedCount = 0;
+        uint256 activeCount = 0;
+        uint256 finalizedCount = 0;
+
+        for (uint256 i = 0; i < eventCount; i++) {
+            if (userPredictions[i][_user].exists) {
+                tempEventIds[participatedCount] = i;
+                participatedCount++;
+
+                PredictionEvent storage event_ = predictionEvents[i];
+                if (event_.isFinalized) {
+                    finalizedCount++;
+                } else if (event_.isActive) {
+                    activeCount++;
+                }
+            }
+        }
+
+        // Create properly sized array
+        uint256[] memory finalEventIds = new uint256[](participatedCount);
+        for (uint256 i = 0; i < participatedCount; i++) {
+            finalEventIds[i] = tempEventIds[i];
+        }
+
+        return (
+            participatedCount,
+            activeCount,
+            finalizedCount,
+            finalEventIds
+        );
+    }
+
+    /// @notice Get global statistics across all events
+    function getGlobalStatistics() external view returns (
+        uint256 totalEvents,
+        uint256 activeEvents,
+        uint256 finalizedEvents,
+        uint256 totalPredictions,
+        uint256 totalCryptoBalls,
+        uint256 totalCollections
+    ) {
+        uint256 events = predictionEvents.length;
+        uint256 active = 0;
+        uint256 finalized = 0;
+        uint256 predictions = 0;
+        uint256 balls = cryptoBalls.length;
+        uint256 collections = ballCollections.length;
+
+        for (uint256 i = 0; i < events; i++) {
+            PredictionEvent storage event_ = predictionEvents[i];
+            predictions += event_.totalPredictions;
+
+            if (event_.isFinalized) {
+                finalized++;
+            } else if (event_.isActive) {
+                active++;
+            }
+        }
+
+        return (
+            events,
+            active,
+            finalized,
+            predictions,
+            balls,
+            collections
+        );
+    }
+
     /// @notice Get user's encrypted prediction (user can decrypt their own)
     function getUserEncryptedPrediction(
         uint256 _eventId,
