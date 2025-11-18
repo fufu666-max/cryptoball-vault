@@ -91,6 +91,21 @@ contract CryptoPriceGuess is SepoliaConfig {
     mapping(address => bool) public authorizedPriceFeeders;
     address public priceFeedAdmin;
 
+    // User preferences system
+    struct UserPreferences {
+        bool emailNotifications;
+        bool priceAlerts;
+        uint256 minAlertThreshold; // Minimum price change for alerts (in basis points)
+        TokenType preferredToken; // BTC or ETH
+        bool autoGenerateBalls;
+        bool publicProfile;
+        string displayName;
+        uint256 theme; // 0: light, 1: dark, 2: auto
+    }
+
+    mapping(address => UserPreferences) public userPreferences;
+    mapping(address => bool) public hasSetPreferences;
+
     // Encrypted storage system
     struct EncryptedStorage {
         euint32 storedValue;
@@ -134,6 +149,10 @@ contract CryptoPriceGuess is SepoliaConfig {
     // Price oracle events
     event PriceUpdated(TokenType indexed tokenType, uint256 price, uint256 timestamp, address updater);
     event PriceFeedAuthorized(address indexed feeder, bool authorized);
+
+    // User preferences events
+    event UserPreferencesUpdated(address indexed user);
+    event PriceAlertTriggered(address indexed user, TokenType tokenType, uint256 price, uint256 change);
 
     // Encrypted storage events
     event ValueStored(uint256 indexed storageId, address indexed owner);
@@ -959,6 +978,152 @@ contract CryptoPriceGuess is SepoliaConfig {
             z = (x / z + z) / 2;
         }
         return y;
+    }
+
+    /// @notice Set user preferences
+    /// @param _emailNotifications Enable email notifications
+    /// @param _priceAlerts Enable price alerts
+    /// @param _minAlertThreshold Minimum price change threshold (basis points)
+    /// @param _preferredToken Preferred token type
+    /// @param _autoGenerateBalls Auto-generate balls after predictions
+    /// @param _publicProfile Make profile public
+    /// @param _displayName Display name (max 32 characters)
+    /// @param _theme UI theme preference
+    function setUserPreferences(
+        bool _emailNotifications,
+        bool _priceAlerts,
+        uint256 _minAlertThreshold,
+        TokenType _preferredToken,
+        bool _autoGenerateBalls,
+        bool _publicProfile,
+        string memory _displayName,
+        uint256 _theme
+    ) external {
+        require(_minAlertThreshold <= 10000, "Threshold cannot exceed 100%");
+        require(_theme <= 2, "Invalid theme");
+        require(bytes(_displayName).length <= 32, "Display name too long");
+
+        userPreferences[msg.sender] = UserPreferences({
+            emailNotifications: _emailNotifications,
+            priceAlerts: _priceAlerts,
+            minAlertThreshold: _minAlertThreshold,
+            preferredToken: _preferredToken,
+            autoGenerateBalls: _autoGenerateBalls,
+            publicProfile: _publicProfile,
+            displayName: _displayName,
+            theme: _theme
+        });
+
+        hasSetPreferences[msg.sender] = true;
+        emit UserPreferencesUpdated(msg.sender);
+    }
+
+    /// @notice Get user preferences
+    function getUserPreferences(address _user) external view returns (
+        bool emailNotifications,
+        bool priceAlerts,
+        uint256 minAlertThreshold,
+        TokenType preferredToken,
+        bool autoGenerateBalls,
+        bool publicProfile,
+        string memory displayName,
+        uint256 theme
+    ) {
+        // Only user themselves or if profile is public
+        require(_user == msg.sender || userPreferences[_user].publicProfile, "Profile not public");
+
+        UserPreferences memory prefs = userPreferences[_user];
+        return (
+            prefs.emailNotifications,
+            prefs.priceAlerts,
+            prefs.minAlertThreshold,
+            prefs.preferredToken,
+            prefs.autoGenerateBalls,
+            prefs.publicProfile,
+            prefs.displayName,
+            prefs.theme
+        );
+    }
+
+    /// @notice Check if price alert should be triggered for user
+    /// @param _user The user to check
+    /// @param _tokenType The token type
+    /// @param _currentPrice The current price
+    /// @param _previousPrice The previous price
+    function shouldTriggerPriceAlert(
+        address _user,
+        TokenType _tokenType,
+        uint256 _currentPrice,
+        uint256 _previousPrice
+    ) external view returns (bool) {
+        if (!hasSetPreferences[_user] || !userPreferences[_user].priceAlerts) {
+            return false;
+        }
+
+        // Only trigger for preferred token
+        if (userPreferences[_user].preferredToken != _tokenType) {
+            return false;
+        }
+
+        // Calculate price change in basis points
+        uint256 change;
+        if (_currentPrice > _previousPrice) {
+            change = ((_currentPrice - _previousPrice) * 10000) / _previousPrice;
+        } else {
+            change = ((_previousPrice - _currentPrice) * 10000) / _previousPrice;
+        }
+
+        return change >= userPreferences[_user].minAlertThreshold;
+    }
+
+    /// @notice Trigger price alert for user (can be called by authorized price feeders)
+    /// @param _user The user to alert
+    /// @param _tokenType The token type
+    /// @param _price The current price
+    /// @param _change The price change amount
+    function triggerPriceAlert(
+        address _user,
+        TokenType _tokenType,
+        uint256 _price,
+        uint256 _change
+    ) external {
+        require(authorizedPriceFeeders[msg.sender], "Not authorized to trigger alerts");
+        require(hasSetPreferences[_user], "User has no preferences set");
+        require(userPreferences[_user].priceAlerts, "User has alerts disabled");
+
+        emit PriceAlertTriggered(_user, _tokenType, _price, _change);
+    }
+
+    /// @notice Get user's public profile information
+    function getUserPublicProfile(address _user) external view returns (
+        string memory displayName,
+        bool hasPublicProfile,
+        uint256 totalPredictions,
+        uint256 totalBalls,
+        uint256 totalCollections
+    ) {
+        UserPreferences memory prefs = userPreferences[_user];
+
+        if (!prefs.publicProfile) {
+            return ("", false, 0, 0, 0);
+        }
+
+        (uint256 predictions,,) = getUserPredictionHistory(_user);
+
+        return (
+            prefs.displayName,
+            true,
+            predictions,
+            userBalls[_user].length,
+            userCollections[_user].length
+        );
+    }
+
+    /// @notice Reset user preferences to defaults
+    function resetUserPreferences() external {
+        delete userPreferences[msg.sender];
+        hasSetPreferences[msg.sender] = false;
+        emit UserPreferencesUpdated(msg.sender);
     }
 
     /// @notice Transfer a CryptoBall to another address
