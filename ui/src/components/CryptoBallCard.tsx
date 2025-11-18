@@ -118,54 +118,52 @@ const CryptoBallCard = ({
   };
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <BallIcon className={`w-6 h-6 ${ballTypeInfo.color}`} />
-            {ballTypeInfo.name}
+    <Card className="w-full max-w-md mx-auto sm:max-w-sm md:max-w-md lg:max-w-lg">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <BallIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${ballTypeInfo.color}`} />
+            <span className="truncate">{ballTypeInfo.name}</span>
           </CardTitle>
-          <Badge variant={isActive ? "default" : "secondary"}>
+          <Badge variant={isActive ? "default" : "secondary"} className="self-start sm:self-auto text-xs">
             {isActive ? "Active" : "Inactive"}
           </Badge>
         </div>
-        <CardDescription>
+        <CardDescription className="text-sm">
           Generated on {formatTime(generationTime)}
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="font-medium">Ball ID:</span>
-            <p className="text-muted-foreground">#{ballId}</p>
+      <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
+          <div className="bg-muted/50 p-2 sm:p-3 rounded-lg">
+            <span className="font-medium block text-xs sm:text-sm">Ball ID:</span>
+            <p className="text-muted-foreground font-mono text-sm sm:text-base">#{ballId}</p>
           </div>
-          <div>
-            <span className="font-medium">Power Level:</span>
-            <p className="text-muted-foreground">{powerLevel}</p>
+          <div className="bg-muted/50 p-2 sm:p-3 rounded-lg">
+            <span className="font-medium block text-xs sm:text-sm">Power Level:</span>
+            <p className="text-muted-foreground text-sm sm:text-base">{powerLevel}</p>
           </div>
         </div>
 
-        <div className="text-sm">
-          <span className="font-medium">Owner:</span>
-          <p className="text-muted-foreground font-mono text-xs break-all">
+        <div className="text-sm bg-muted/50 p-2 sm:p-3 rounded-lg">
+          <span className="font-medium block text-xs sm:text-sm mb-1">Owner:</span>
+          <p className="text-muted-foreground font-mono text-xs break-all leading-tight">
             {owner}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           {address === owner && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowTransfer(!showTransfer)}
-                className="flex-1"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Transfer
-              </Button>
-            </>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowTransfer(!showTransfer)}
+              className="w-full sm:flex-1"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Transfer
+            </Button>
           )}
 
           <Button
@@ -173,7 +171,7 @@ const CryptoBallCard = ({
             size="sm"
             onClick={() => handleGenerateBall(0)} // BUG: Hardcoded event ID
             disabled={isGenerating}
-            className="flex-1"
+            className="w-full sm:flex-1"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
             Generate
@@ -181,23 +179,26 @@ const CryptoBallCard = ({
         </div>
 
         {showTransfer && (
-          <div className="space-y-2 p-3 bg-muted rounded-lg">
-            <input
-              type="text"
-              placeholder="Recipient address (0x...)"
-              value={transferAddress}
-              onChange={(e) => setTransferAddress(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-md"
-            />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleTransfer} className="flex-1">
+          <div className="space-y-3 p-3 sm:p-4 bg-muted/50 rounded-lg border">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Recipient Address</label>
+              <input
+                type="text"
+                placeholder="0x..."
+                value={transferAddress}
+                onChange={(e) => setTransferAddress(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button size="sm" onClick={handleTransfer} className="flex-1 order-2 sm:order-1">
                 Confirm Transfer
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setShowTransfer(false)}
-                className="flex-1"
+                className="flex-1 order-1 sm:order-2"
               >
                 Cancel
               </Button>
