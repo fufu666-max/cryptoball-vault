@@ -1126,6 +1126,229 @@ contract CryptoPriceGuess is SepoliaConfig {
         emit UserPreferencesUpdated(msg.sender);
     }
 
+    /// @notice Get filtered and sorted events
+    /// @param _statusFilter 0: all, 1: active, 2: ended, 3: finalized
+    /// @param _tokenFilter 0: all, 1: BTC, 2: ETH
+    /// @param _sortBy 0: creation time, 1: end time, 2: total predictions, 3: target date
+    /// @param _sortOrder 0: ascending, 1: descending
+    /// @param _limit Maximum events to return
+    /// @param _offset Starting offset for pagination
+    function getFilteredEvents(
+        uint256 _statusFilter,
+        uint256 _tokenFilter,
+        uint256 _sortBy,
+        uint256 _sortOrder,
+        uint256 _limit,
+        uint256 _offset
+    ) external view returns (
+        uint256[] memory eventIds,
+        string[] memory titles,
+        TokenType[] memory tokenTypes,
+        uint256[] memory endTimes,
+        bool[] memory isActive,
+        bool[] memory isFinalized,
+        uint256[] memory totalPredictions
+    ) {
+        uint256 totalEvents = predictionEvents.length;
+        uint256[] memory tempEventIds = new uint256[](totalEvents);
+        uint256 filteredCount = 0;
+
+        // First pass: filter events
+        for (uint256 i = 0; i < totalEvents; i++) {
+            PredictionEvent storage event_ = predictionEvents[i];
+            bool matchesFilter = true;
+
+            // Status filter
+            if (_statusFilter == 1 && !event_.isActive) matchesFilter = false;
+            if (_statusFilter == 2 && (event_.isActive || !event_.isFinalized)) matchesFilter = false;
+            if (_statusFilter == 3 && !event_.isFinalized) matchesFilter = false;
+
+            // Token filter
+            if (_tokenFilter == 1 && event_.tokenType != TokenType.BTC) matchesFilter = false;
+            if (_tokenFilter == 2 && event_.tokenType != TokenType.ETH) matchesFilter = false;
+
+            if (matchesFilter) {
+                tempEventIds[filteredCount] = i;
+                filteredCount++;
+            }
+        }
+
+        // Sort filtered events
+        for (uint256 i = 0; i < filteredCount - 1; i++) {
+            for (uint256 j = 0; j < filteredCount - i - 1; j++) {
+                bool shouldSwap = false;
+                uint256 leftId = tempEventIds[j];
+                uint256 rightId = tempEventIds[j + 1];
+                PredictionEvent storage leftEvent = predictionEvents[leftId];
+                PredictionEvent storage rightEvent = predictionEvents[rightId];
+
+                if (_sortBy == 0) { // creation time (using array index as proxy)
+                    shouldSwap = _sortOrder == 0 ? leftId > rightId : leftId < rightId;
+                } else if (_sortBy == 1) { // end time
+                    shouldSwap = _sortOrder == 0 ? leftEvent.endTime > rightEvent.endTime : leftEvent.endTime < rightEvent.endTime;
+                } else if (_sortBy == 2) { // total predictions
+                    shouldSwap = _sortOrder == 0 ? leftEvent.totalPredictions > rightEvent.totalPredictions : leftEvent.totalPredictions < rightEvent.totalPredictions;
+                } else if (_sortBy == 3) { // target date
+                    shouldSwap = _sortOrder == 0 ? leftEvent.targetDate > rightEvent.targetDate : leftEvent.targetDate < rightEvent.targetDate;
+                }
+
+                if (shouldSwap) {
+                    uint256 temp = tempEventIds[j];
+                    tempEventIds[j] = tempEventIds[j + 1];
+                    tempEventIds[j + 1] = temp;
+                }
+            }
+        }
+
+        // Pagination
+        uint256 startIndex = _offset;
+        uint256 endIndex = startIndex + _limit;
+        if (endIndex > filteredCount) endIndex = filteredCount;
+        if (startIndex >= filteredCount) {
+            // Return empty arrays
+            return (new uint256[](0), new string[](0), new TokenType[](0), new uint256[](0), new bool[](0), new bool[](0), new uint256[](0));
+        }
+
+        uint256 resultCount = endIndex - startIndex;
+        uint256[] memory resultEventIds = new uint256[](resultCount);
+        string[] memory resultTitles = new string[](resultCount);
+        TokenType[] memory resultTokenTypes = new TokenType[](resultCount);
+        uint256[] memory resultEndTimes = new uint256[](resultCount);
+        bool[] memory resultIsActive = new bool[](resultCount);
+        bool[] memory resultIsFinalized = new bool[](resultCount);
+        uint256[] memory resultTotalPredictions = new uint256[](resultCount);
+
+        for (uint256 i = 0; i < resultCount; i++) {
+            uint256 eventId = tempEventIds[startIndex + i];
+            PredictionEvent storage event_ = predictionEvents[eventId];
+
+            resultEventIds[i] = eventId;
+            resultTitles[i] = event_.title;
+            resultTokenTypes[i] = event_.tokenType;
+            resultEndTimes[i] = event_.endTime;
+            resultIsActive[i] = event_.isActive;
+            resultIsFinalized[i] = event_.isFinalized;
+            resultTotalPredictions[i] = event_.totalPredictions;
+        }
+
+        return (
+            resultEventIds,
+            resultTitles,
+            resultTokenTypes,
+            resultEndTimes,
+            resultIsActive,
+            resultIsFinalized,
+            resultTotalPredictions
+        );
+    }
+
+    /// @notice Get filtered CryptoBalls for user
+    /// @param _user The user address
+    /// @param _ballTypeFilter 0: all, 1: Crystal, 2: Prediction, 3: Vault
+    /// @param _activeFilter 0: all, 1: active only, 2: inactive only
+    /// @param _sortBy 0: generation time, 1: power level, 2: ball type
+    /// @param _sortOrder 0: ascending, 1: descending
+    function getFilteredUserBalls(
+        address _user,
+        uint256 _ballTypeFilter,
+        uint256 _activeFilter,
+        uint256 _sortBy,
+        uint256 _sortOrder
+    ) external view returns (
+        uint256[] memory ballIds,
+        BallType[] memory ballTypes,
+        uint256[] memory powerLevels,
+        bool[] memory isActive
+    ) {
+        uint256[] memory userBallIds = userBalls[_user];
+        uint256 totalBalls = userBallIds.length;
+
+        // Count matching balls
+        uint256 matchCount = 0;
+        for (uint256 i = 0; i < totalBalls; i++) {
+            uint256 ballId = userBallIds[i];
+            (BallType ballType, , uint256 powerLevel, , bool active) = getCryptoBall(ballId);
+
+            bool matchesType = _ballTypeFilter == 0 ||
+                (_ballTypeFilter == 1 && ballType == BallType.CRYSTAL) ||
+                (_ballTypeFilter == 2 && ballType == BallType.PREDICTION) ||
+                (_ballTypeFilter == 3 && ballType == BallType.VAULT);
+
+            bool matchesActive = _activeFilter == 0 ||
+                (_activeFilter == 1 && active) ||
+                (_activeFilter == 2 && !active);
+
+            if (matchesType && matchesActive) {
+                matchCount++;
+            }
+        }
+
+        // Create result arrays
+        uint256[] memory resultBallIds = new uint256[](matchCount);
+        BallType[] memory resultBallTypes = new BallType[](matchCount);
+        uint256[] memory resultPowerLevels = new uint256[](matchCount);
+        bool[] memory resultIsActive = new bool[](matchCount);
+
+        uint256 resultIndex = 0;
+        for (uint256 i = 0; i < totalBalls; i++) {
+            uint256 ballId = userBallIds[i];
+            (BallType ballType, , uint256 powerLevel, , bool active) = getCryptoBall(ballId);
+
+            bool matchesType = _ballTypeFilter == 0 ||
+                (_ballTypeFilter == 1 && ballType == BallType.CRYSTAL) ||
+                (_ballTypeFilter == 2 && ballType == BallType.PREDICTION) ||
+                (_ballTypeFilter == 3 && ballType == BallType.VAULT);
+
+            bool matchesActive = _activeFilter == 0 ||
+                (_activeFilter == 1 && active) ||
+                (_activeFilter == 2 && !active);
+
+            if (matchesType && matchesActive) {
+                resultBallIds[resultIndex] = ballId;
+                resultBallTypes[resultIndex] = ballType;
+                resultPowerLevels[resultIndex] = powerLevel;
+                resultIsActive[resultIndex] = active;
+                resultIndex++;
+            }
+        }
+
+        // Simple bubble sort (small arrays expected)
+        for (uint256 i = 0; i < matchCount - 1; i++) {
+            for (uint256 j = 0; j < matchCount - i - 1; j++) {
+                bool shouldSwap = false;
+
+                if (_sortBy == 0) { // generation time (using ball ID as proxy)
+                    shouldSwap = _sortOrder == 0 ? resultBallIds[j] > resultBallIds[j + 1] : resultBallIds[j] < resultBallIds[j + 1];
+                } else if (_sortBy == 1) { // power level
+                    shouldSwap = _sortOrder == 0 ? resultPowerLevels[j] > resultPowerLevels[j + 1] : resultPowerLevels[j] < resultPowerLevels[j + 1];
+                } else if (_sortBy == 2) { // ball type
+                    shouldSwap = _sortOrder == 0 ? uint256(resultBallTypes[j]) > uint256(resultBallTypes[j + 1]) : uint256(resultBallTypes[j]) < uint256(resultBallTypes[j + 1]);
+                }
+
+                if (shouldSwap) {
+                    // Swap all arrays
+                    uint256 tempUint = resultBallIds[j];
+                    resultBallIds[j] = resultBallIds[j + 1];
+                    resultBallIds[j + 1] = tempUint;
+
+                    BallType tempType = resultBallTypes[j];
+                    resultBallTypes[j] = resultBallTypes[j + 1];
+                    resultBallTypes[j + 1] = tempType;
+
+                    tempUint = resultPowerLevels[j];
+                    resultPowerLevels[j] = resultPowerLevels[j + 1];
+                    resultPowerLevels[j + 1] = tempUint;
+
+                    bool tempBool = resultIsActive[j];
+                    resultIsActive[j] = resultIsActive[j + 1];
+                    resultIsActive[j + 1] = tempBool;
+                }
+            }
+        }
+
+        return (resultBallIds, resultBallTypes, resultPowerLevels, resultIsActive);
+    }
+
     /// @notice Transfer a CryptoBall to another address
     /// @param _ballId The ball ID to transfer
     /// @param _to The recipient address
