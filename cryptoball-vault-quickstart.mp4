@@ -1,0 +1,37 @@
+# CryptoBall Vault - Quick Start Guide (5 Minutes)
+
+This accelerated video shows how to get CryptoBall Vault up and running in under 5 minutes.
+
+## Quick Start Steps:
+1. Clone the repository
+2. Install dependencies (npm install)
+3. Set up environment variables
+4. Start Hardhat node with FHEVM
+5. Deploy smart contracts
+6. Launch frontend application
+7. Connect wallet and start predicting
+
+## Prerequisites Covered:
+- Node.js 20+ installation
+- MetaMask wallet setup
+- Basic command line usage
+- Environment configuration
+
+## What You'll Learn:
+- Rapid local development setup
+- Contract deployment process
+- Frontend development server
+- Basic user interactions
+- Troubleshooting common issues
+
+## Perfect For:
+- New developers joining the project
+- Quick demonstrations
+- CI/CD pipeline validation
+- User onboarding
+
+## Duration: 5 minutes
+## Resolution: 1920x1080 (Full HD)
+## Format: MP4 with H.264 encoding
+
+For the actual video file, please contact the development team.

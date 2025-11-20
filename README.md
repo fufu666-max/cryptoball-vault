@@ -5,7 +5,8 @@ A privacy-preserving crypto price prediction market built with **FHEVM (Fully Ho
 ## 🎯 Live Demo
 
 - **Live Application**: [https://cryptoball-vault.vercel.app/](https://cryptoball-vault.vercel.app/)
-- **Demo Video**: [https://github.com/MorganDobbin/cryptoball-vault/blob/main/cryptoball-vault.mp4](https://github.com/MorganDobbin/cryptoball-vault/blob/main/cryptoball-vault.mp4)
+- **Demo Video**: [Full Feature Walkthrough](./cryptoball-vault-demo.mp4)
+- **Quick Start Video**: [5-Minute Setup Guide](./cryptoball-vault-quickstart.mp4)
 
 ## ✨ Features
 

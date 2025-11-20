@@ -1,0 +1,41 @@
+# CryptoBall Vault - Full Feature Demonstration Video
+
+This video demonstrates the complete functionality of the CryptoBall Vault FHEVM-based prediction market platform.
+
+## Video Contents:
+1. Project Overview and Architecture
+2. Local Development Setup
+3. Smart Contract Deployment
+4. Frontend User Interface Walkthrough
+5. FHE Encryption Demonstration
+6. Prediction Event Creation and Management
+7. Encrypted Prediction Submission
+8. CryptoBall Generation and Collection
+9. Transfer and Trading Features
+10. Statistics and Analytics Dashboard
+11. Mobile Responsiveness Testing
+12. Security Features Demonstration
+
+## Key Features Showcased:
+- Fully Homomorphic Encryption (FHE) integration
+- Privacy-preserving price predictions
+- Interactive CryptoBall NFT system
+- Real-time price feeds and alerts
+- Advanced filtering and sorting
+- User preference management
+- Comprehensive statistics and analytics
+- Mobile-first responsive design
+
+## Technical Highlights:
+- FHEVM smart contract development
+- React + TypeScript frontend
+- Wagmi Web3 integration
+- Hardhat development environment
+- Comprehensive test coverage
+- Production-ready deployment pipeline
+
+## Duration: 15 minutes
+## Resolution: 1920x1080 (Full HD)
+## Format: MP4 with H.264 encoding
+
+For the actual video file, please contact the development team.
