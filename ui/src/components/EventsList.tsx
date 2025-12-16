@@ -18,16 +18,29 @@ interface EventData {
 // Component to render a single event card with data fetching
 const EventCardWithData = ({ eventId, refreshKey, onRefresh }: { eventId: number; refreshKey?: number; onRefresh?: () => void }) => {
   const { getEventConfig } = useCryptoPriceGuess();
-  const { data: eventData, refetch } = useReadContract(getEventConfig(eventId));
+  const config = getEventConfig(eventId);
+  const { data: eventData, refetch, isError, isLoading } = useReadContract({
+    ...config,
+    query: {
+      ...config.query,
+      retry: false, // Disable retry to prevent infinite loops
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      staleTime: 30000, // Cache for 30 seconds
+    },
+  });
+  const [lastRefreshKey, setLastRefreshKey] = useState(refreshKey);
   
-  // Refetch when refreshKey changes
+  // Refetch when refreshKey changes (without refetch in deps)
   useEffect(() => {
-    if (refreshKey !== undefined && refreshKey > 0) {
+    if (refreshKey !== undefined && refreshKey > 0 && refreshKey !== lastRefreshKey) {
+      setLastRefreshKey(refreshKey);
       refetch();
     }
-  }, [refreshKey, refetch]);
+  }, [refreshKey, lastRefreshKey]);
 
-  if (!eventData) {
+  // Don't render if error or no data
+  if (isError || isLoading || !eventData) {
     return null;
   }
 
@@ -64,11 +77,10 @@ const EventsList = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [createEventModalOpen, setCreateEventModalOpen] = useState(false);
 
-  // Create array of event IDs
+  // Create array of event IDs - only create if eventCount > 0
   const eventIds = useMemo(() => {
-    if (eventCount === 0) {
-      // Return placeholder IDs for demo
-      return [1, 2];
+    if (!eventCount || eventCount === 0) {
+      return [];
     }
     return Array.from({ length: eventCount }, (_, i) => i);
   }, [eventCount]);
@@ -79,25 +91,31 @@ const EventsList = () => {
   };
 
   // Show placeholder message if no contract events
-  if (eventCount === 0) {
+  if (eventIds.length === 0) {
     return (
-      <section className="py-12 px-4 bg-secondary/30">
-        <div className="container mx-auto max-w-6xl">
+      <section className="py-16 px-4 bg-secondary/30 relative overflow-hidden">
+        {/* Background decorations */}
+        <div className="absolute inset-0">
+          <div className="absolute top-20 right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 left-20 w-64 h-64 bg-encrypted/5 rounded-full blur-3xl" />
+        </div>
+
+        <div className="container mx-auto max-w-6xl relative z-10">
           <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-2">
-            <TrendingUp className="w-8 h-8 text-primary" />
+            <div className="flex items-center gap-2 animate-fade-in-up">
+            <TrendingUp className="w-8 h-8 text-primary animate-bounce-subtle" />
             <h2 className="text-3xl font-bold">Active Events</h2>
             </div>
             <Button
               onClick={() => setCreateEventModalOpen(true)}
-              className="gap-2"
+              className="gap-2 hover:scale-105 transition-transform duration-300 animate-fade-in-up stagger-2"
             >
               <Plus className="w-4 h-4" />
               Create Event
             </Button>
           </div>
-          <div className="glass-effect rounded-xl p-12 text-center">
-            <TrendingUp className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
+          <div className="glass-effect rounded-xl p-12 text-center animate-fade-in-scale">
+            <TrendingUp className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50 animate-bounce-subtle" />
             <h3 className="text-xl font-bold mb-2">No Events Yet</h3>
             <p className="text-muted-foreground mb-6">
               Create your first prediction event to get started
@@ -105,7 +123,7 @@ const EventsList = () => {
             <Button
               onClick={() => setCreateEventModalOpen(true)}
               size="lg"
-              className="gap-2"
+              className="gap-2 hover:scale-105 transition-transform duration-300"
             >
               <Plus className="w-5 h-5" />
               Create Your First Event
@@ -127,25 +145,37 @@ const EventsList = () => {
   }
 
   return (
-    <section className="py-12 px-4 bg-secondary/30">
-      <div className="container mx-auto max-w-6xl">
+    <section className="py-16 px-4 bg-secondary/30 relative overflow-hidden">
+      {/* Background decorations */}
+      <div className="absolute inset-0">
+        <div className="absolute top-20 right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-20 w-64 h-64 bg-encrypted/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="container mx-auto max-w-6xl relative z-10">
         <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-2">
-          <TrendingUp className="w-8 h-8 text-primary" />
-          <h2 className="text-3xl font-bold">Active Events</h2>
+          <div className="flex items-center gap-2 animate-fade-in-up">
+            <TrendingUp className="w-8 h-8 text-primary animate-bounce-subtle" />
+            <h2 className="text-3xl font-bold">Active Events</h2>
           </div>
           <Button
             onClick={() => setCreateEventModalOpen(true)}
             variant="outline"
-            className="gap-2"
+            className="gap-2 hover:scale-105 transition-transform duration-300 animate-fade-in-up stagger-2"
           >
             <Plus className="w-4 h-4" />
             Create Event
           </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {eventIds.map((eventId) => (
-            <EventCardWithData key={eventId} eventId={eventId} refreshKey={refreshKey} onRefresh={handleRefresh} />
+          {eventIds.map((eventId, index) => (
+            <div
+              key={eventId}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${index * 150}ms` }}
+            >
+              <EventCardWithData eventId={eventId} refreshKey={refreshKey} onRefresh={handleRefresh} />
+            </div>
           ))}
         </div>
       </div>

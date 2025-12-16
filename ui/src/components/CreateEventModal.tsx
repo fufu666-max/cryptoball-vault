@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { useAccount } from "wagmi";
@@ -22,6 +21,27 @@ const CreateEventModal = ({ open, onOpenChange }: CreateEventModalProps) => {
   const [targetDate, setTargetDate] = useState("");
   const [durationHours, setDurationHours] = useState("24");
   const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  // Handle successful creation in useEffect to avoid setState during render
+  useEffect(() => {
+    if (hasSubmitted && isConfirmed) {
+      toast.success("Event created successfully!");
+      refetchEventCount();
+      onOpenChange(false);
+      setTitle("");
+      setTokenType("0");
+      setTargetDate("");
+      setDurationHours("24");
+      setHasSubmitted(false);
+    }
+  }, [hasSubmitted, isConfirmed]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setHasSubmitted(false);
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,18 +132,6 @@ const CreateEventModal = ({ open, onOpenChange }: CreateEventModalProps) => {
     }
   };
 
-  // Handle successful creation
-  if (hasSubmitted && isConfirmed) {
-    toast.success("Event created successfully!");
-    refetchEventCount();
-    onOpenChange(false);
-    setTitle("");
-    setTokenType("0");
-    setTargetDate("");
-    setDurationHours("24");
-    setHasSubmitted(false);
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] glass-effect border-primary/20">
@@ -149,15 +157,15 @@ const CreateEventModal = ({ open, onOpenChange }: CreateEventModalProps) => {
 
           <div className="space-y-2">
             <Label htmlFor="tokenType">Token Type</Label>
-            <Select value={tokenType} onValueChange={(value) => setTokenType(value as "0" | "1")}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select token type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">BTC (Bitcoin)</SelectItem>
-                <SelectItem value="1">ETH (Ethereum)</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              id="tokenType"
+              value={tokenType}
+              onChange={(e) => setTokenType(e.target.value as "0" | "1")}
+              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <option value="0">BTC (Bitcoin)</option>
+              <option value="1">ETH (Ethereum)</option>
+            </select>
           </div>
 
           <div className="space-y-2">

@@ -27,10 +27,19 @@ const PredictionModal = ({ open, onOpenChange, eventTitle, eventId, onSuccess }:
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fhevmInstance, setFhevmInstance] = useState<any>(null);
   const [fhevmLoading, setFhevmLoading] = useState(false);
+  const [hasHandledConfirm, setHasHandledConfirm] = useState(false);
+  
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (!open) {
+      setHasHandledConfirm(false);
+      setIsSubmitting(false);
+    }
+  }, [open]);
   
   // Monitor contract errors from writeContract
   useEffect(() => {
-    if (contractError) {
+    if (contractError && isSubmitting) {
       console.error("Contract write error:", contractError);
       let errorMsg = contractError.message || "Transaction failed";
       
@@ -48,7 +57,7 @@ const PredictionModal = ({ open, onOpenChange, eventTitle, eventId, onSuccess }:
       toast.error(`Failed to submit: ${errorMsg}`);
       setIsSubmitting(false);
     }
-  }, [contractError]);
+  }, [contractError, isSubmitting]);
 
   // Initialize FHEVM instance
   useEffect(() => {
@@ -275,78 +284,7 @@ const PredictionModal = ({ open, onOpenChange, eventTitle, eventId, onSuccess }:
         throw new Error(`Invalid handle length: ${handleHex.length}, expected 66 (32 bytes)`);
       }
       
-      // Check if event exists before submitting
-      try {
-        const provider = new ethers.BrowserProvider(walletClient as any);
-        const contract = new ethers.Contract(
-          contractAddress!,
-          [
-            "function getPredictionEvent(uint256) view returns (string, uint8, uint256, uint256, bool, bool, address, uint256, uint256, uint32)",
-            "function hasUserPredicted(uint256, address) view returns (bool)",
-          ],
-          provider
-        );
-        
-        // Check if event exists
-        try {
-          const eventData = await contract.getPredictionEvent(eventId);
-          console.log("Event data before submission:", {
-            title: eventData[0],
-            tokenType: eventData[1],
-            targetDate: Number(eventData[2]),
-            endTime: Number(eventData[3]),
-            isActive: eventData[4],
-            isFinalized: eventData[5],
-            admin: eventData[6],
-            totalPredictions: Number(eventData[7]),
-            currentTime: Math.floor(Date.now() / 1000),
-          });
-          
-          if (!eventData) {
-            throw new Error(`Event ${eventId} does not exist. Please create an event first.`);
-          }
-          
-          if (!eventData[4]) { // isActive
-            throw new Error("Event is not active. It may have been ended or finalized.");
-          }
-          
-          const endTime = Number(eventData[3]);
-          const currentTime = Math.floor(Date.now() / 1000);
-          if (currentTime >= endTime) {
-            throw new Error(`Event has ended. End time: ${new Date(endTime * 1000).toLocaleString()}`);
-          }
-          
-          if (eventData[5]) { // isFinalized
-            throw new Error("Event has been finalized. No more predictions can be submitted.");
-          }
-          
-          // Check if user already predicted
-          const hasPredicted = await contract.hasUserPredicted(eventId, address);
-          if (hasPredicted) {
-            throw new Error("You have already submitted a prediction for this event.");
-          }
-        } catch (contractError: any) {
-          console.error("Event validation error:", contractError);
-          // Re-throw with better message
-          if (contractError.message) {
-            throw contractError;
-          }
-          throw new Error(`Failed to validate event: ${contractError.message || "Unknown error"}`);
-        }
-      } catch (checkError: any) {
-        // If it's already a user-friendly error, rethrow it
-        if (checkError.message?.includes("does not exist") || 
-            checkError.message?.includes("already submitted") ||
-            checkError.message?.includes("not active") ||
-            checkError.message?.includes("has ended") ||
-            checkError.message?.includes("finalized")) {
-          throw checkError;
-        }
-        console.warn("Could not verify event status:", checkError);
-        // Continue anyway, let the contract handle the error
-      }
-      
-      // Submit to contract
+      // Submit to contract - let the contract handle validation
       await submitPrediction(eventId, handleHex as `0x${string}`, inputProofHex as `0x${string}`);
       
     } catch (error: any) {
@@ -411,14 +349,16 @@ const PredictionModal = ({ open, onOpenChange, eventTitle, eventId, onSuccess }:
 
   // Handle successful submission
   useEffect(() => {
-  if (isConfirmed) {
-    toast.success("Prediction encrypted and submitted successfully!");
-    onOpenChange(false);
-    setPrice("");
+    if (isConfirmed && !hasHandledConfirm && isSubmitting) {
+      setHasHandledConfirm(true);
+      toast.success("Prediction encrypted and submitted successfully!");
+      setPrice("");
+      setIsSubmitting(false);
       // Trigger refresh of event data
       onSuccess?.();
-  }
-  }, [isConfirmed, onOpenChange, onSuccess]);
+      onOpenChange(false);
+    }
+  }, [isConfirmed, hasHandledConfirm, isSubmitting]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

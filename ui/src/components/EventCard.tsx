@@ -68,7 +68,7 @@ const EventCard = ({
   }, [id, admin, address, isAdmin]);
 
   return (
-    <div className="glass-effect rounded-xl p-6 hover:shadow-neon transition-all duration-300">
+    <div className="glass-effect rounded-xl p-6 hover:shadow-neon transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 group">
       <div className="flex items-start justify-between mb-4">
         <div>
           <div className="text-xs text-accent uppercase tracking-wider mb-1">
@@ -77,9 +77,9 @@ const EventCard = ({
           <h3 className="text-xl font-bold">{title}</h3>
         </div>
         <div
-          className={`px-3 py-1 rounded-full text-xs font-medium ${
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-300 ${
             status === "active"
-              ? "bg-accent/20 text-accent"
+              ? "bg-accent/20 text-accent animate-pulse"
               : isFinalized
               ? "bg-primary/20 text-primary"
               : "bg-muted text-muted-foreground"

@@ -158,6 +158,9 @@ export function useCryptoPriceGuess() {
     functionName: 'getEventCount',
     query: {
       enabled: !!contractAddress,
+      retry: false,
+      refetchOnWindowFocus: false,
+      staleTime: 30000,
     },
   });
 
@@ -170,6 +173,9 @@ export function useCryptoPriceGuess() {
     args: [BigInt(eventId)] as const,
     query: {
       enabled: !!contractAddress && eventId >= 0,
+      retry: false,
+      refetchOnWindowFocus: false,
+      staleTime: 30000,
     },
   });
 
