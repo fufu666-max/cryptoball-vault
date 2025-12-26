@@ -90,10 +90,6 @@ const CRYPTO_PRICE_GUESS_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
-    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
   {
     inputs: [
       { internalType: 'string', name: '_title', type: 'string' },
